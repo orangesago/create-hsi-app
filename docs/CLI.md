@@ -7,9 +7,29 @@
 - `--npm`: use npm for the scaffolded app and write `.npmrc`
 - `--pnpm`: use pnpm for the scaffolded app and write `pnpm-workspace.yaml`
 - `--yarn`: use Yarn for the scaffolded app and write `.yarnrc.yml`
+- `--styled`: include the styled starter and design tokens without showing the
+  styling prompt
+- `--minimal`: include only a minimal global CSS reset without showing the
+  styling prompt
+- `--lucide`: include Lucide React without showing the icon prompt (default)
+- `--noLucide`: omit Lucide React without showing the icon prompt
+- `--query`: include TanStack Query and its provider without showing the query
+  prompt
+- `--noQuery`: omit TanStack Query without showing the query prompt (default)
+- `--open`: open the browser when a Vite dev server starts
+- `--noOpen`: do not open the browser when a Vite dev server starts (default)
 - `--noInstall`: skip the default dependency installation step
 - `--noRepo`: skip the interactive repository prompt and leave git
   uninitialized
+
+Interactive runs prompt for the framework, package manager, starter styling,
+Lucide React, TanStack Query, and Vite browser opening. Non-interactive runs
+default to Vite, Bun, styled CSS, Lucide enabled, TanStack Query disabled, and
+browser opening disabled unless overridden by the flags above.
+
+When the CLI creates a git repository, it keeps the Husky pre-commit hook and
+runs lint-staged with the selected package manager. Repo-less scaffolds omit
+that git-only tooling.
 
 ## Smoke Test
 
@@ -27,4 +47,5 @@ Skip repo setup or pass through other CLI flags when needed:
 bun run smoke -- --noRepo
 bun run smoke -- --npm --noInstall
 bun run smoke -- --next --noInstall --noRepo
+bun run smoke -- --vite --npm --minimal --noLucide --query --noInstall --noRepo
 ```

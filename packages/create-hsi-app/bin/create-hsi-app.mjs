@@ -27,15 +27,22 @@ const templateRepo = 'https://github.com/Hsiii/frontend-template.git';
 const templateTag = 'v0.8.0';
 const defaultAppName = 'my-app';
 const packageManagers = ['bun', 'npm', 'pnpm', 'yarn'];
+const lucideVersion = '1.17.0';
+const queryVersion = '5.101.0';
 const nextVersion = '16.2.7';
 const rawArgs = process.argv.slice(2);
 const parsedArgs = parseCliArgs(rawArgs);
-const selectedPackageManager = resolvePackageManager(parsedArgs);
+let selectedPackageManager = resolvePackageManager(parsedArgs);
 let selectedFramework = resolveFramework(parsedArgs);
+let selectedStyling = resolveStyling(parsedArgs);
+let shouldIncludeLucide = parsedArgs.lucide ?? true;
+let shouldIncludeQuery = parsedArgs.query ?? false;
+let shouldOpenBrowser = parsedArgs.open ?? false;
 let shouldInstallDependencies = !(
     parsedArgs.noInstall || readNpmBooleanFlag('noinstall')
 );
 const shouldSkipRepoSetup = parsedArgs.noRepo || readNpmBooleanFlag('norepo');
+let shouldRegenerateLockfile = false;
 const isInteractive = process.stdin.isTTY && process.stdout.isTTY;
 const targetArg = parsedArgs.targetArg ?? '.';
 const targetPath = resolve(targetArg);
@@ -52,6 +59,11 @@ async function main() {
 
     intro(appName, targetPath);
     selectedFramework = await planFramework();
+    selectedPackageManager = await planPackageManager();
+    selectedStyling = await planStyling();
+    shouldIncludeLucide = await planLucide();
+    shouldIncludeQuery = await planQuery();
+    shouldOpenBrowser = await planOpenBrowser();
     const repoPlan = await planRepoSetup();
     shouldInstallDependencies = await planInstallDependencies();
     closePrompts();
@@ -75,11 +87,23 @@ async function main() {
     rmSync(join(targetPath, 'packages'), { force: true, recursive: true });
     rmSync(join(targetPath, 'scripts'), { force: true, recursive: true });
 
-    updatePackageJson();
+    updatePackageJson(repoPlan);
     updateBunLock();
     console.log();
     section('Customizing project files');
     console.log(`- framework: ${frameworkLabel(selectedFramework)}`);
+    console.log(`- styling: ${stylingLabel(selectedStyling)}`);
+    console.log(
+        `- Lucide icons: ${shouldIncludeLucide ? 'included' : 'skipped'}`
+    );
+    console.log(
+        `- TanStack Query: ${shouldIncludeQuery ? 'included' : 'skipped'}`
+    );
+    if (selectedFramework === 'vite') {
+        console.log(
+            `- open browser on dev start: ${shouldOpenBrowser ? 'enabled' : 'disabled'}`
+        );
+    }
     console.log(`- package.json: name, version, scripts, packageManager`);
     logFrameworkFileChanges();
     console.log(`- .gitignore: framework build artifacts`);
@@ -92,7 +116,10 @@ async function main() {
     updateAppText();
     updateGitIgnore();
     updatePackageManagerFiles();
+    updateGitHooks(repoPlan);
     writeAppReadme();
+
+    applyLocalRepoPlan(repoPlan);
 
     if (shouldInstallDependencies) {
         console.log();
@@ -100,7 +127,7 @@ async function main() {
         installDependencies();
     }
 
-    await applyRepoPlan(repoPlan);
+    createGitHubRepo(repoPlan);
 
     ready(appName, nextSteps());
 }
@@ -122,7 +149,7 @@ function run(command, args, options = {}) {
     }
 }
 
-function updatePackageJson() {
+function updatePackageJson(repoPlan) {
     const packageJsonPath = join(targetPath, 'package.json');
     const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf8'));
 
@@ -132,8 +159,33 @@ function updatePackageJson() {
     delete packageJson.publishConfig;
     delete packageJson.packageManager;
     delete packageJson.engines;
-    delete packageJson.scripts.prepare;
     delete packageJson.scripts.release;
+
+    shouldRegenerateLockfile =
+        Boolean(packageJson.dependencies['lucide-react']) !==
+            shouldIncludeLucide ||
+        Boolean(packageJson.dependencies['@tanstack/react-query']) !==
+            shouldIncludeQuery ||
+        !repoPlan;
+
+    if (shouldIncludeLucide) {
+        packageJson.dependencies['lucide-react'] = lucideVersion;
+    } else {
+        delete packageJson.dependencies['lucide-react'];
+    }
+
+    if (shouldIncludeQuery) {
+        packageJson.dependencies['@tanstack/react-query'] = queryVersion;
+    } else {
+        delete packageJson.dependencies['@tanstack/react-query'];
+    }
+
+    if (!repoPlan) {
+        delete packageJson.scripts.prepare;
+        delete packageJson['lint-staged'];
+        delete packageJson.devDependencies.husky;
+        delete packageJson.devDependencies['lint-staged'];
+    }
     if (selectedFramework === 'next') {
         packageJson.scripts.dev = 'next dev';
         packageJson.scripts.build = 'next build';
@@ -160,7 +212,7 @@ function updateBunLock() {
         return;
     }
 
-    if (selectedPackageManager !== 'bun') {
+    if (selectedPackageManager !== 'bun' || shouldRegenerateLockfile) {
         rmSync(lockPath, { force: true });
         return;
     }
@@ -190,7 +242,31 @@ function updateAppText() {
 function updateFrameworkFiles() {
     if (selectedFramework === 'next') {
         writeNextAppFiles();
+        return;
     }
+
+    const viteConfigPath = join(targetPath, 'vite.config.mjs');
+    replaceInFile(
+        viteConfigPath,
+        '    server: {\n        open: true,\n    },\n',
+        { with: '' }
+    );
+    if (shouldOpenBrowser) {
+        replaceInFile(viteConfigPath, '    plugins: [react()],\n', {
+            with: '    plugins: [react()],\n    server: {\n        open: true,\n    },\n',
+        });
+    }
+    writeFileSync(join(targetPath, 'src/main.tsx'), viteMain());
+    updateStylingFiles(join(targetPath, 'src/global.css'));
+}
+
+function updateStylingFiles(globalCssPath) {
+    if (selectedStyling === 'styled') {
+        return;
+    }
+
+    rmSync(join(targetPath, 'src/constants'), { force: true, recursive: true });
+    writeFileSync(globalCssPath, minimalGlobalCss());
 }
 
 function updateGitIgnore() {
@@ -232,6 +308,17 @@ function updatePackageManagerFiles() {
         default:
             fail(`Unsupported package manager: ${selectedPackageManager}`);
     }
+}
+
+function updateGitHooks(repoPlan) {
+    const huskyPath = join(targetPath, '.husky');
+
+    if (!repoPlan) {
+        rmSync(huskyPath, { force: true, recursive: true });
+        return;
+    }
+
+    writeFileSync(join(huskyPath, 'pre-commit'), `${lintStagedCommand()}\n`);
 }
 
 function installDependencies() {
@@ -302,6 +389,94 @@ async function planFramework() {
     gap();
 
     return framework;
+}
+
+async function planPackageManager() {
+    if (parsedArgs.packageManager || !isInteractive) {
+        return selectedPackageManager;
+    }
+
+    const packageManager = await select({
+        message: 'Package manager',
+        options: [
+            { label: 'Bun', value: 'bun' },
+            { label: 'npm', value: 'npm' },
+            { label: 'pnpm', value: 'pnpm' },
+            { label: 'Yarn', value: 'yarn' },
+        ],
+        initialValue: 'bun',
+    });
+    gap();
+
+    return packageManager;
+}
+
+async function planStyling() {
+    if (parsedArgs.styling || !isInteractive) {
+        return selectedStyling;
+    }
+
+    const styling = await select({
+        message: 'Starter styling',
+        options: [
+            { label: 'Styled', value: 'styled' },
+            { label: 'Minimal', value: 'minimal' },
+        ],
+        initialValue: 'styled',
+    });
+    gap();
+
+    return styling;
+}
+
+async function planLucide() {
+    if (parsedArgs.lucide !== null || !isInteractive) {
+        return shouldIncludeLucide;
+    }
+
+    const includeLucide = await confirm({
+        message: 'Include Lucide icons?',
+        initialValue: true,
+    });
+    gap();
+
+    return includeLucide;
+}
+
+async function planQuery() {
+    if (parsedArgs.query !== null || !isInteractive) {
+        return shouldIncludeQuery;
+    }
+
+    const includeQuery = await confirm({
+        message: 'Include TanStack Query?',
+        initialValue: false,
+    });
+    gap();
+
+    return includeQuery;
+}
+
+async function planOpenBrowser() {
+    if (selectedFramework !== 'vite') {
+        if (parsedArgs.open) {
+            fail('--open is only supported for Vite scaffolds.');
+        }
+
+        return false;
+    }
+
+    if (parsedArgs.open !== null || !isInteractive) {
+        return shouldOpenBrowser;
+    }
+
+    const openBrowser = await confirm({
+        message: 'Open the browser when the dev server starts?',
+        initialValue: false,
+    });
+    gap();
+
+    return openBrowser;
 }
 
 async function planInstallDependencies() {
@@ -385,7 +560,7 @@ async function planRepoSetup() {
     };
 }
 
-async function applyRepoPlan(repoPlan) {
+function applyLocalRepoPlan(repoPlan) {
     if (!repoPlan) {
         return;
     }
@@ -393,8 +568,10 @@ async function applyRepoPlan(repoPlan) {
     console.log();
     section('Initializing local git repository');
     initLocalRepo();
+}
 
-    if (!repoPlan.github) {
+function createGitHubRepo(repoPlan) {
+    if (!repoPlan?.github) {
         return;
     }
 
@@ -416,7 +593,6 @@ async function applyRepoPlan(repoPlan) {
 
 function initLocalRepo() {
     run('git', ['init', '-b', 'main'], { cwd: targetPath });
-    run('git', ['config', 'core.hooksPath', '.githooks'], { cwd: targetPath });
 }
 
 function canUseGitHubCli() {
@@ -489,9 +665,13 @@ function toPackageName(value) {
 function parseCliArgs(args) {
     const parsedArgs = {
         framework: null,
+        lucide: null,
         noInstall: false,
         noRepo: false,
+        open: null,
         packageManager: null,
+        query: null,
+        styling: null,
         targetArg: null,
     };
 
@@ -514,6 +694,30 @@ function parseCliArgs(args) {
                 continue;
             case '--yarn':
                 setPackageManagerOverride(parsedArgs, 'yarn');
+                continue;
+            case '--styled':
+                setStylingOverride(parsedArgs, 'styled');
+                continue;
+            case '--minimal':
+                setStylingOverride(parsedArgs, 'minimal');
+                continue;
+            case '--lucide':
+                setBooleanOverride(parsedArgs, 'lucide', true);
+                continue;
+            case '--noLucide':
+                setBooleanOverride(parsedArgs, 'lucide', false);
+                continue;
+            case '--query':
+                setBooleanOverride(parsedArgs, 'query', true);
+                continue;
+            case '--noQuery':
+                setBooleanOverride(parsedArgs, 'query', false);
+                continue;
+            case '--open':
+                setBooleanOverride(parsedArgs, 'open', true);
+                continue;
+            case '--noOpen':
+                setBooleanOverride(parsedArgs, 'open', false);
                 continue;
             case '--noInstall':
                 parsedArgs.noInstall = true;
@@ -556,12 +760,32 @@ function setPackageManagerOverride(parsedArgs, packageManager) {
     parsedArgs.packageManager = packageManager;
 }
 
+function setStylingOverride(parsedArgs, styling) {
+    if (parsedArgs.styling && parsedArgs.styling !== styling) {
+        fail('Pass only one of --styled or --minimal.');
+    }
+
+    parsedArgs.styling = styling;
+}
+
+function setBooleanOverride(parsedArgs, name, value) {
+    if (parsedArgs[name] !== null && parsedArgs[name] !== value) {
+        fail(`Pass only one value for ${name}.`);
+    }
+
+    parsedArgs[name] = value;
+}
+
 function resolvePackageManager(parsedArgs) {
     return parsedArgs.packageManager ?? 'bun';
 }
 
 function resolveFramework(parsedArgs) {
     return parsedArgs.framework ?? 'vite';
+}
+
+function resolveStyling(parsedArgs) {
+    return parsedArgs.styling ?? 'styled';
 }
 
 function readNpmBooleanFlag(name) {
@@ -605,6 +829,7 @@ function writeNextAppFiles() {
     writeFileSync(join(targetPath, 'tsconfig.json'), nextTsconfig());
     writeFileSync(join(appPath, 'layout.tsx'), nextLayout());
     writeFileSync(join(appPath, 'global.css'), nextGlobalCss());
+    updateStylingFiles(join(appPath, 'global.css'));
     writeFileSync(join(catchAllPath, 'client.tsx'), nextClientPage());
     writeFileSync(join(catchAllPath, 'page.tsx'), nextPage());
 }
@@ -631,6 +856,17 @@ function frameworkDescription(framework) {
     }
 }
 
+function stylingLabel(styling) {
+    switch (styling) {
+        case 'styled':
+            return 'Styled starter';
+        case 'minimal':
+            return 'Minimal reset';
+        default:
+            fail(`Unsupported styling: ${styling}`);
+    }
+}
+
 function frameworkTitle(framework) {
     switch (framework) {
         case 'vite':
@@ -643,11 +879,25 @@ function frameworkTitle(framework) {
 }
 
 function appComponent() {
+    if (selectedStyling === 'minimal') {
+        return `import type { JSX } from 'react';
+
+export function App(): JSX.Element {
+    return (
+        <main>
+            <h1>${appName}</h1>
+            <p>${frameworkTitle(selectedFramework)}</p>
+        </main>
+    );
+}
+`;
+    }
+
     return `import type { JSX } from 'react';
 
 export function App(): JSX.Element {
-    // Keep App.tsx coordinating screens and providers. Extract components early
-    // so this never becomes a 3,000-line god file.
+    // Keep App.tsx coordinating screens and providers. Extract components early so this never
+    // becomes a 3,000-line god file.
     return (
         <main className='app'>
             <section className='app__content'>
@@ -660,6 +910,57 @@ export function App(): JSX.Element {
             </section>
         </main>
     );
+}
+`;
+}
+
+function viteMain() {
+    const queryImport = shouldIncludeQuery
+        ? "import { QueryClient, QueryClientProvider } from '@tanstack/react-query';\n"
+        : '';
+    const queryClient = shouldIncludeQuery
+        ? '\nconst queryClient = new QueryClient();\n'
+        : '';
+    const app = shouldIncludeQuery
+        ? `        <QueryClientProvider client={queryClient}>
+            <App />
+        </QueryClientProvider>`
+        : '        <App />';
+
+    return `import React from 'react';
+${queryImport}import ReactDOM from 'react-dom/client';
+
+import { App } from './components/App.js';
+
+import './global.css';
+${queryClient}
+const rootElement = document.querySelector('#root');
+
+if (rootElement === null) {
+    throw new Error('Expected #root to exist before mounting the app.');
+}
+
+ReactDOM.createRoot(rootElement).render(
+    <React.StrictMode>
+${app}
+    </React.StrictMode>
+);
+`;
+}
+
+function minimalGlobalCss() {
+    return `:root {
+    font-family: system-ui, sans-serif;
+}
+
+* {
+    box-sizing: border-box;
+}
+
+body {
+    min-width: 320px;
+    min-height: 100vh;
+    margin: 0;
 }
 `;
 }
@@ -796,14 +1097,31 @@ export default function RootLayout({ children }: RootLayoutProps): JSX.Element {
 }
 
 function nextClientPage() {
+    const imports = shouldIncludeQuery
+        ? `import type { JSX } from 'react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+
+import { App } from '@/components/App';`
+        : `import type { JSX } from 'react';
+
+import { App } from '@/components/App';`;
+    const queryClient = shouldIncludeQuery
+        ? '\n\nconst queryClient = new QueryClient();'
+        : '';
+    const app = shouldIncludeQuery
+        ? `    return (
+        <QueryClientProvider client={queryClient}>
+            <App />
+        </QueryClientProvider>
+    );`
+        : '    return <App />;';
+
     return `'use client';
 
-import type { JSX } from 'react';
-
-import { App } from '@/components/App';
+${imports}${queryClient}
 
 export function ClientOnly(): JSX.Element {
-    return <App />;
+${app}
 }
 `;
 }
@@ -901,6 +1219,21 @@ function packageManagerDeclaration() {
             return 'pnpm@10';
         case 'yarn':
             return 'yarn@4';
+        default:
+            fail(`Unsupported package manager: ${selectedPackageManager}`);
+    }
+}
+
+function lintStagedCommand() {
+    switch (selectedPackageManager) {
+        case 'bun':
+            return 'bunx lint-staged';
+        case 'npm':
+            return 'npx lint-staged';
+        case 'pnpm':
+            return 'pnpm exec lint-staged';
+        case 'yarn':
+            return 'yarn exec lint-staged';
         default:
             fail(`Unsupported package manager: ${selectedPackageManager}`);
     }

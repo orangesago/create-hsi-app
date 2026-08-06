@@ -9,10 +9,12 @@ An opinionated web development stack focused on simplicity, development experien
 - Vite or Next.js App Router SPA export
 - React 19
 - TypeScript 6
-- TanStack React Query
-- Lucide React
+- Lucide React by default
+- Optional TanStack React Query
+- Styled or minimal starter CSS
 - ESLint with `eslint-config-complete`
 - Prettier with sorted imports
+- Husky and lint-staged pre-commit checks for generated git repositories
 - VS Code extension recommendations for lint, format, spellcheck, and syntax highlighting
 - VS Code auto lint/format settings
 - Package-age gating for supply-chain security
