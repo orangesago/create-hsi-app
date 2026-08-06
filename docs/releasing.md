@@ -80,7 +80,7 @@ press ENTER to open the browser login flow before publishing.
 
 ```bash
 npm login --registry=https://registry.npmjs.org
-npm publish --registry=https://registry.npmjs.org
+npm publish ./packages/create-hsi-app --registry=https://registry.npmjs.org
 ```
 
 ## Legacy Package
