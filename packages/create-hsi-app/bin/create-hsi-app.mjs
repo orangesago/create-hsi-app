@@ -37,6 +37,7 @@ let selectedFramework = resolveFramework(parsedArgs);
 let selectedStyling = resolveStyling(parsedArgs);
 let shouldIncludeLucide = parsedArgs.lucide ?? true;
 let shouldIncludeQuery = parsedArgs.query ?? false;
+let shouldOpenBrowser = parsedArgs.open ?? false;
 let shouldInstallDependencies = !(
     parsedArgs.noInstall || readNpmBooleanFlag('noinstall')
 );
@@ -62,6 +63,7 @@ async function main() {
     selectedStyling = await planStyling();
     shouldIncludeLucide = await planLucide();
     shouldIncludeQuery = await planQuery();
+    shouldOpenBrowser = await planOpenBrowser();
     const repoPlan = await planRepoSetup();
     shouldInstallDependencies = await planInstallDependencies();
     closePrompts();
@@ -97,6 +99,11 @@ async function main() {
     console.log(
         `- TanStack Query: ${shouldIncludeQuery ? 'included' : 'skipped'}`
     );
+    if (selectedFramework === 'vite') {
+        console.log(
+            `- open browser on dev start: ${shouldOpenBrowser ? 'enabled' : 'disabled'}`
+        );
+    }
     console.log(`- package.json: name, version, scripts, packageManager`);
     logFrameworkFileChanges();
     console.log(`- .gitignore: framework build artifacts`);
@@ -238,11 +245,17 @@ function updateFrameworkFiles() {
         return;
     }
 
+    const viteConfigPath = join(targetPath, 'vite.config.mjs');
     replaceInFile(
-        join(targetPath, 'vite.config.mjs'),
+        viteConfigPath,
         '    server: {\n        open: true,\n    },\n',
         { with: '' }
     );
+    if (shouldOpenBrowser) {
+        replaceInFile(viteConfigPath, '    plugins: [react()],\n', {
+            with: '    plugins: [react()],\n    server: {\n        open: true,\n    },\n',
+        });
+    }
     writeFileSync(join(targetPath, 'src/main.tsx'), viteMain());
     updateStylingFiles(join(targetPath, 'src/global.css'));
 }
@@ -444,6 +457,28 @@ async function planQuery() {
     return includeQuery;
 }
 
+async function planOpenBrowser() {
+    if (selectedFramework !== 'vite') {
+        if (parsedArgs.open) {
+            fail('--open is only supported for Vite scaffolds.');
+        }
+
+        return false;
+    }
+
+    if (parsedArgs.open !== null || !isInteractive) {
+        return shouldOpenBrowser;
+    }
+
+    const openBrowser = await confirm({
+        message: 'Open the browser when the dev server starts?',
+        initialValue: false,
+    });
+    gap();
+
+    return openBrowser;
+}
+
 async function planInstallDependencies() {
     if (!shouldInstallDependencies || !isInteractive) {
         return shouldInstallDependencies;
@@ -633,6 +668,7 @@ function parseCliArgs(args) {
         lucide: null,
         noInstall: false,
         noRepo: false,
+        open: null,
         packageManager: null,
         query: null,
         styling: null,
@@ -676,6 +712,12 @@ function parseCliArgs(args) {
                 continue;
             case '--noQuery':
                 setBooleanOverride(parsedArgs, 'query', false);
+                continue;
+            case '--open':
+                setBooleanOverride(parsedArgs, 'open', true);
+                continue;
+            case '--noOpen':
+                setBooleanOverride(parsedArgs, 'open', false);
                 continue;
             case '--noInstall':
                 parsedArgs.noInstall = true;

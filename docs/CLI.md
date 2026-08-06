@@ -16,14 +16,16 @@
 - `--query`: include TanStack Query and its provider without showing the query
   prompt
 - `--noQuery`: omit TanStack Query without showing the query prompt (default)
+- `--open`: open the browser when a Vite dev server starts
+- `--noOpen`: do not open the browser when a Vite dev server starts (default)
 - `--noInstall`: skip the default dependency installation step
 - `--noRepo`: skip the interactive repository prompt and leave git
   uninitialized
 
 Interactive runs prompt for the framework, package manager, starter styling,
-Lucide React, and TanStack Query. Non-interactive runs default to Vite, Bun,
-styled CSS, Lucide enabled, and TanStack Query disabled unless overridden by
-the flags above.
+Lucide React, TanStack Query, and Vite browser opening. Non-interactive runs
+default to Vite, Bun, styled CSS, Lucide enabled, TanStack Query disabled, and
+browser opening disabled unless overridden by the flags above.
 
 When the CLI creates a git repository, it keeps the Husky pre-commit hook and
 runs lint-staged with the selected package manager. Repo-less scaffolds omit
