@@ -24,7 +24,7 @@ import {
 } from './ui.mjs';
 
 const templateRepo = 'https://github.com/Hsiii/frontend-template.git';
-const templateTag = 'v0.8.0';
+const templateTag = 'v0.9.0';
 const defaultAppName = 'my-app';
 const packageManagers = ['bun', 'npm', 'pnpm', 'yarn'];
 const lucideVersion = '1.17.0';

@@ -1,6 +1,6 @@
 {
     "name": "frontend-template",
-    "version": "0.8.0",
+    "version": "0.9.0",
     "private": true,
     "type": "module",
     "repository": {
@@ -19,7 +19,7 @@
         "typecheck": "tsc -p tsconfig.json --noEmit",
         "release": "release-it --config release-it.config.cjs",
         "smoke": "node scripts/smoke-create-hsi-app.mjs",
-        "check": "tsc -p tsconfig.json --noEmit && eslint . && node --check packages/create-hsi-app/bin/create-hsi-app.mjs && node --check scripts/smoke-create-hsi-app.mjs && prettier . --check && vite build"
+        "check": "tsc -p tsconfig.json --noEmit && eslint . && node --check packages/create-hsi-app/bin/create-hsi-app.mjs && node --check scripts/smoke-create-hsi-app.mjs && node --check scripts/sync-release-version.mjs && prettier . --check && vite build"
     },
     "lint-staged": {
         "*.{js,jsx,ts,tsx,css,scss,html,json,md,yml,yaml}": [
