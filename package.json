@@ -5,7 +5,7 @@
     "type": "module",
     "repository": {
         "type": "git",
-        "url": "git+https://github.com/orangesago/create-hsi-app.git"
+        "url": "git+https://github.com/sago-cream/create-hsi-app.git"
     },
     "scripts": {
         "prepare": "husky",
