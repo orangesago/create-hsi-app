@@ -23,7 +23,7 @@ import {
     warn,
 } from './ui.mjs';
 
-const templateRepo = 'https://github.com/Hsiii/frontend-template.git';
+const templateRepo = 'https://github.com/orangesago/create-hsi-app.git';
 const templateTag = 'v0.9.0';
 const defaultAppName = 'my-app';
 const packageManagers = ['bun', 'npm', 'pnpm', 'yarn'];
