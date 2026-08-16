@@ -30,4 +30,4 @@ bun create hsi-app@latest
 ```
 
 Full CLI usage, flags, and repo/install behavior:
-[docs/CLI.md](https://github.com/Hsiii/frontend-template/blob/main/docs/CLI.md)
+[docs/CLI.md](https://github.com/orangesago/create-hsi-app/blob/main/docs/CLI.md)
